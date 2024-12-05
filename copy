@@ -1,0 +1,1016 @@
+import pygame
+import sys
+import random
+import math
+from PIL import Image
+
+pygame.init()
+
+# Screen dimensions
+SCREEN_WIDTH = 1000
+SCREEN_HEIGHT = 500
+
+# Colors
+BLACK = (0, 0, 0)
+
+# Initialize screen
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Space Battle")
+
+# Clock for managing the frame rate
+clock = pygame.time.Clock()
+
+# Load GIF frames
+def load_gif_frames(gif_path):
+    gif = Image.open(gif_path)
+    frames = []
+    try:
+        while True:
+            frame = gif.copy()
+            frames.append(pygame.image.fromstring(frame.tobytes(), frame.size, frame.mode))
+            gif.seek(len(frames))  # Move to the next frame
+    except EOFError:
+        pass  # End of GIF
+    return frames
+
+# Enemy and projectile properties
+NUM_ENEMIES = 3
+ENEMY_SPEED = 0.3
+ENEMY_ROTATION_SPEED = 0.2
+PROJECTILE_SPEED = 5
+ENEMY_SIZE = 90  # Adjust size of the enemy sprites
+
+# Load assets
+try:
+    enemy_frames = [pygame.image.load(f"assets/enemy.gif").convert_alpha() for _ in range(NUM_ENEMIES)]
+    player_frames = [pygame.image.load("assets/enemy-ship.png").convert_alpha() for _ in range(4)]
+    player_projectile_image = pygame.image.load("assets/bullet1.png").convert_alpha()
+    PROJECTILE_SHAPES = [
+        pygame.transform.scale(pygame.image.load(f"assets/Asteroids/small-a.png").convert_alpha(), (30, 30)),
+        pygame.transform.scale(pygame.image.load(f"assets/Asteroids/med-b.png").convert_alpha(), (30, 30)),
+        pygame.transform.scale(pygame.image.load(f"assets/Asteroids/big-a.png").convert_alpha(), (30, 30)),
+    ]
+    background = pygame.image.load("assets/background.png").convert()
+    midground = pygame.image.load("assets/midground.png").convert_alpha()
+    foreground = pygame.image.load("assets/foreground.png").convert_alpha()
+except pygame.error as e:
+    print(f"Error loading image: {e}")
+    sys.exit()
+
+# Player properties
+player_x = SCREEN_WIDTH // 2
+player_y = SCREEN_HEIGHT - 100
+player_speed = 5
+player_frame_index = 0
+player_animation_speed = 5
+player_angle = 0
+player_projectiles = []
+
+# Initialize enemies
+enemies = []
+for i in range(NUM_ENEMIES):
+    enemies.append({
+        "x": random.randint(0, SCREEN_WIDTH - ENEMY_SIZE),
+        "y": random.randint(0, SCREEN_HEIGHT // 5),
+        "speed": random.choice([-ENEMY_SPEED, ENEMY_SPEED]),
+        "rotation": 0,
+        "direction": random.choice([-1, 1]),
+        "frame": pygame.transform.scale(enemy_frames[i], (ENEMY_SIZE, ENEMY_SIZE)),
+        "projectile_timer": 0,
+    })
+
+# Enemy projectiles
+projectiles = []
+
+# Spawn a projectile
+def spawn_projectile(enemy):
+    angle = random.uniform(-45, 90)
+    dx = math.cos(math.radians(angle)) * PROJECTILE_SPEED
+    dy = math.sin(math.radians(angle)) * PROJECTILE_SPEED
+    projectiles.append({
+        "x": enemy["x"] + ENEMY_SIZE // 2,
+        "y": enemy["y"] + ENEMY_SIZE,
+        "dx": dx,
+        "dy": dy,
+        "shape": random.choice(PROJECTILE_SHAPES),
+    })
+
+# Function to spawn a new player projectile
+def spawn_player_projectile(x, y, angle):
+    radian_angle = math.radians(angle)
+    dx = math.cos(radian_angle) * PROJECTILE_SPEED
+    dy = -math.sin(radian_angle) * PROJECTILE_SPEED
+    player_projectiles.append({
+        "x": x,
+        "y": y,
+        "dx": dx,
+        "dy": dy,
+        "shape": player_projectile_image,
+    })
+
+# Collision detection
+def check_collision(obj1, obj2, size1, size2):
+    distance = math.sqrt((obj1["x"] - obj2["x"])**2 + (obj1["y"] - obj2["y"])**2)
+    return distance < (size1 // 2 + size2 // 2)
+
+# Main game loop
+def main():
+    global player_x, player_y, player_frame_index, player_angle
+
+    running = True
+    while running:
+        # Handle events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_SPACE:  # Fire projectile
+                    spawn_player_projectile(player_x, player_y, player_angle)
+
+        # Player movement
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] and player_x > 0:
+            player_x -= player_speed
+            player_angle = 90
+        if keys[pygame.K_RIGHT] and player_x < SCREEN_WIDTH:
+            player_x += player_speed
+            player_angle = -90
+        if keys[pygame.K_UP] and player_y > 0:
+            player_y -= player_speed
+            player_angle = 0
+        if keys[pygame.K_DOWN] and player_y < SCREEN_HEIGHT:
+            player_y += player_speed
+            player_angle %= 180
+
+        # Update enemies
+        for enemy in enemies:
+            enemy["x"] += enemy["speed"]
+            if enemy["x"] <= 0 or enemy["x"] >= SCREEN_WIDTH - ENEMY_SIZE:
+                enemy["speed"] *= -1
+            enemy["projectile_timer"] += 1
+            if enemy["projectile_timer"] >= random.randint(60, 120):
+                spawn_projectile(enemy)
+                enemy["projectile_timer"] = 0
+
+        # Move projectiles
+        for proj in player_projectiles[:]:
+            proj["x"] += proj["dx"]
+            proj["y"] += proj["dy"]
+            if proj["y"] < 0:
+                player_projectiles.remove(proj)
+
+        for proj in projectiles[:]:
+            proj["x"] += proj["dx"]
+            proj["y"] += proj["dy"]
+            if proj["y"] > SCREEN_HEIGHT:
+                projectiles.remove(proj)
+
+        # Check collisions
+        for enemy in enemies[:]:
+            for proj in player_projectiles[:]:
+                if check_collision(proj, enemy, 30, ENEMY_SIZE):
+                    enemies.remove(enemy)
+                    player_projectiles.remove(proj)
+                    break
+
+        for proj in projectiles[:]:
+            if check_collision(proj, {"x": player_x, "y": player_y}, 30, 50):
+                print("Game Over!")
+                running = False
+
+        # Drawing
+        screen.fill(BLACK)
+        screen.blit(background, (0, 0))
+
+        for enemy in enemies:
+            screen.blit(enemy["frame"], (enemy["x"], enemy["y"]))
+
+        for proj in player_projectiles:
+            screen.blit(proj["shape"], (proj["x"], proj["y"]))
+
+        for proj in projectiles:
+            screen.blit(proj["shape"], (proj["x"], proj["y"]))
+
+        player_rotated = pygame.transform.rotate(player_frames[player_frame_index], player_angle)
+        screen.blit(player_rotated, (player_x, player_y))
+
+        pygame.display.flip()
+        clock.tick(60)
+
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
+
+
+
+
+
+
+#     import pygame
+# import sys
+# import random
+# import math
+# from PIL import Image
+
+# pygame.init()
+
+# # Screen dimensions
+# SCREEN_WIDTH = 750
+# SCREEN_HEIGHT = 500
+
+# # Colors
+# BLACK = (0, 0, 0)
+
+# # Initialize screen
+# screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+# pygame.display.set_caption("Space Battle")
+
+# # Clock for managing the frame rate
+# clock = pygame.time.Clock()
+
+# # Load background layers
+# try:
+#     background = pygame.image.load("assets/background.png").convert()
+#     midground = pygame.image.load("assets/midground.png").convert_alpha()
+#     foreground = pygame.image.load("assets/foreground.png").convert_alpha()
+# except pygame.error as e:
+#     print(f"Error loading image: {e}")
+#     sys.exit()
+
+# # Parallax scrolling variables
+# bg_x = 0
+# mg_x = 0
+# fg_x = 0
+
+# # Player properties
+# player_img = pygame.image.load("assets/sc-1.gif").convert_alpha()
+# player_x = SCREEN_WIDTH // 2
+# player_y = SCREEN_HEIGHT - 100
+# player_speed = 5
+# player_angle = 0
+# player_projectiles = []  # List to hold player's projectiles
+
+# # Load player projectile image
+# player_projectile_img = pygame.image.load("assets/bullet1.png").convert_alpha()
+
+# PROJECTILE_SHAPES = [
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/small-a.png").convert_alpha(), (30, 30)),
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/big-a.png").convert_alpha(), (60, 60)),
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/med-a.png").convert_alpha(), (50, 50)),
+# ]
+
+# # Enemy properties
+# ENEMY_SIZE = 90
+# NUM_ENEMIES = 3
+# enemy_img = pygame.image.load("assets/enemy.gif").convert_alpha()
+# enemy_img = pygame.transform.scale(enemy_img, (ENEMY_SIZE, ENEMY_SIZE))
+
+# enemies = [
+#     {
+#         "x": random.randint(0, SCREEN_WIDTH - ENEMY_SIZE),
+#         "y": random.randint(0, SCREEN_HEIGHT // 5),
+#         "speed": random.choice([-1, 1]),
+#         "rotation": 0,
+#     }
+#     for _ in range(NUM_ENEMIES)
+# ]
+
+# # Enemy projectiles
+# enemy_projectiles = []
+# PROJECTILE_SPEED = 2
+
+# # Smooth rotation function
+# def smooth_rotation(target_angle, current_angle, speed=5):
+#     difference = target_angle - current_angle
+#     if abs(difference) > speed:
+#         current_angle += speed if difference > 0 else -speed
+#     else:
+#         current_angle = target_angle
+#     return current_angle
+
+
+# def spawn_projectile(enemy):
+#     projectile_x = enemy["x"] + ENEMY_SIZE // 2
+#     projectile_y = enemy["y"] + ENEMY_SIZE
+#     shape = random.choice(PROJECTILE_SHAPES)
+#     speed = random.uniform(1, 2)  # Randomized speed
+#     angle = random.uniform(-145, 145)  # Randomized trajectory
+    
+#     # Correct initialization of projectile direction
+#     dx = math.cos(math.radians(angle)) * speed
+#     dy = math.sin(math.radians(angle)) * speed
+    
+#     projectiles.append({
+#         "x": projectile_x,
+#         "y": projectile_y,
+#         "dx": dx,
+#         "dy": dy,
+#         "shape": shape,
+#     })
+
+    
+# def move_projectiles():
+#     # Move enemy projectiles
+#     for projectile in projectiles[:]:
+#         projectile["x"] += projectile["dx"]
+#         projectile["y"] += projectile["dy"]
+
+#         # Remove off-screen projectiles
+#         if projectile["x"] < 0 or projectile["x"] > SCREEN_WIDTH or projectile["y"] > SCREEN_HEIGHT:
+#             projectiles.remove(projectile)
+
+
+# # Spawn player projectile
+# def spawn_player_projectile(player_x, player_y, player_angle, player_width, player_height):
+#     # Offset for spawning at the front of the player
+#     front_offset = max(player_width, player_height) // 2 + 10
+
+#     # Calculate the center of the player
+#     player_center_x = player_x
+#     player_center_y = player_y
+
+#     # Calculate projectile spawn position
+#     projectile_x = player_center_x + math.cos(math.radians(player_angle)) * front_offset
+#     projectile_y = player_center_y - math.sin(math.radians(player_angle)) * front_offset
+
+#     # Calculate velocity for the projectile
+#     dx = math.cos(math.radians(player_angle)) * PROJECTILE_SPEED
+#     dy = -math.sin(math.radians(player_angle)) * PROJECTILE_SPEED
+
+#     # Add the projectile to the list
+#     player_projectiles.append({
+#         "x": projectile_x,
+#         "y": projectile_y,
+#         "dx": dx,
+#         "dy": dy,
+#         "shape": player_projectile_img
+#     })
+
+
+
+# # Move projectiles
+# def move_projectiles():
+#     for projectile in player_projectiles[:]:
+#         projectile["x"] += projectile["dx"]
+#         projectile["y"] += projectile["dy"]
+#         if (
+#             projectile["x"] < 0
+#             or projectile["x"] > SCREEN_WIDTH
+#             or projectile["y"] < 0
+#             or projectile["y"] > SCREEN_HEIGHT
+#         ):
+#             player_projectiles.remove(projectile)
+
+
+# # Move enemies
+# def move_enemies():
+#     for enemy in enemies:
+#         enemy["x"] += enemy["speed"]
+#         if enemy["x"] <= 0 or enemy["x"] >= SCREEN_WIDTH - ENEMY_SIZE:
+#             enemy["speed"] *= -1
+
+
+# # Draw all game elements
+# def draw_elements():
+#     # Background layers
+#     screen.blit(background, (0, 0))
+#     screen.blit(midground, (mg_x, 0))
+#     screen.blit(foreground, (fg_x, SCREEN_HEIGHT - foreground.get_height()))
+
+#     # Player
+#     rotated_player = pygame.transform.rotate(player_img, player_angle)
+#     player_rect = rotated_player.get_rect(center=(player_x, player_y))
+#     screen.blit(rotated_player, player_rect.topleft)
+
+
+#     # Player projectiles
+#     for projectile in player_projectiles:
+#         screen.blit(player_projectile_img, (projectile["x"], projectile["y"]))
+
+#     # Enemies
+#     for enemy in enemies:
+#         screen.blit(enemy_img, (enemy["x"], enemy["y"]))
+
+
+# # Main game loop
+# def main():
+#     global player_x, player_y, player_angle
+#     running = True
+#     current_angle = 0
+
+#     while running:
+#         # Handle events
+#         for event in pygame.event.get():
+#             if event.type == pygame.QUIT:
+#                 running = False
+#             if event.type == pygame.KEYDOWN:
+#                 if event.key == pygame.K_SPACE:  # Fire projectile
+#                     player_width, player_height = player_img.get_rect().size
+#                     spawn_player_projectile(player_x, player_y, player_angle, player_width, player_height)
+
+#         # Player movement
+#         keys = pygame.key.get_pressed()
+#         target_angle = current_angle  # Default to current angle
+#         if keys[pygame.K_LEFT] and player_x > 0:
+#             player_x -= player_speed
+#             target_angle = 90
+#         if keys[pygame.K_RIGHT] and player_x < SCREEN_WIDTH:
+#             player_x += player_speed
+#             target_angle = -90
+#         if keys[pygame.K_UP] and player_y > 0:
+#             player_y -= player_speed
+#             target_angle = 0
+#         if keys[pygame.K_DOWN] and player_y < SCREEN_HEIGHT:
+#             player_y += player_speed
+#             target_angle = 180
+
+#         # Smooth rotation
+#         player_angle = smooth_rotation(target_angle, current_angle)
+#         current_angle = player_angle
+
+#         # Game logic
+#         move_enemies()
+#         move_projectiles()
+
+#         # Drawing
+#         screen.fill(BLACK)
+#         draw_elements()
+#         pygame.display.flip()
+#         clock.tick(60)
+
+#     pygame.quit()
+#     sys.exit()
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
+#     import pygame
+# import sys
+# import random
+# import math
+# from PIL import Image
+
+# pygame.init()
+
+# # Screen dimensions
+# SCREEN_WIDTH = 750
+# SCREEN_HEIGHT = 500
+
+# # Colors
+# BLACK = (0, 0, 0)
+
+# # Initialize screen
+# screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+# pygame.display.set_caption("Space Battle")
+
+# # Clock for managing the frame rate
+# clock = pygame.time.Clock()
+
+# # Load GIF frames
+# def load_gif_frames(gif_path):
+#     gif = Image.open(gif_path)
+#     frames = []
+#     try:
+#         while True:
+#             frame = gif.copy()
+#             frames.append(pygame.image.fromstring(frame.tobytes(), frame.size, frame.mode))
+#             gif.seek(len(frames))  # Move to the next frame
+#     except EOFError:
+#         pass  # End of GIF
+
+#     # Remove the first or last frame if needed
+#     if frames:
+#         frames.pop(0)  # Remove the last frame (use pop(0) for the first frame)
+#     return frames
+
+# # Enemy and projectile properties
+# NUM_ENEMIES = 3
+# ENEMY_SPEED = 0.3
+# ENEMY_ROTATION_SPEED = 0.2
+# PROJECTILE_SPEED = 2
+# PROJECTILE_SHAPES = []
+
+# # Load enemy frames (ensure enemy sprites are square for proper rotation)
+# enemy_frames = [pygame.image.load(f"assets/enemy.gif").convert_alpha() for i in range(1, NUM_ENEMIES + 1)]
+# ENEMY_SIZE = 90  # Adjust size of the enemy sprites
+
+# # Resize enemy frames
+# enemy_frames = [pygame.transform.scale(frame, (ENEMY_SIZE, ENEMY_SIZE)) for frame in enemy_frames]
+
+# # Load projectile shapes
+# PROJECTILE_SHAPES = [
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/small-a.png").convert_alpha(), (30, 30)),
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/med-b.png").convert_alpha(), (30, 30)),
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/big-a.png").convert_alpha(), (30, 30)),
+# ]
+
+# # Player properties
+# player_frames = [pygame.image.load(f"assets/enemy-ship.png").convert_alpha() for i in range(1, 5)]
+# player_x = SCREEN_WIDTH // 2
+# player_y = SCREEN_HEIGHT - 100
+# player_speed = 5
+# player_frame_index = 0
+# player_animation_speed = 5
+# frame_counter = 0
+# player_projectiles = []  # List to hold player's projectiles
+
+# # Load projectile image
+# player_projectile_image = pygame.image.load("assets/bullet1.png").convert_alpha()
+
+# # Function to spawn a new player projectile
+# def spawn_player_projectile(x, y):
+#     player_projectiles.append({
+#         "x": x,
+#         "y": y,
+#         "dx": 0,  # No horizontal movement for the player projectile
+#         "dy": -PROJECTILE_SPEED,  # Vertical movement, moving upwards
+#         "shape": player_projectile_image
+#     })
+
+
+# # Move player projectiles
+# # Move projectiles
+# def move_projectiles():
+#     for projectile in projectiles[:]:
+#         # Ensure that the projectile has the correct keys
+#         if "dx" in projectile and "dy" in projectile:
+#             projectile["x"] += projectile["dx"]
+#             projectile["y"] += projectile["dy"]
+
+#             # Remove off-screen projectiles
+#             if projectile["x"] < 0 or projectile["x"] > SCREEN_WIDTH or projectile["y"] > SCREEN_HEIGHT:
+#                 projectiles.remove(projectile)
+
+#     for projectile in player_projectiles[:]:
+#         # Ensure that the player projectile has the correct keys
+#         if "dy" in projectile:
+#             projectile["y"] += projectile["dy"]
+
+#             # Remove off-screen projectiles
+#             if projectile["y"] < 0:
+#                 player_projectiles.remove(projectile)
+
+# # Initialize enemies
+# enemies = []
+# for i in range(NUM_ENEMIES):
+#     enemies.append({
+#         "x": random.randint(0, SCREEN_WIDTH - ENEMY_SIZE),
+#         "y": random.randint(0, SCREEN_HEIGHT // 5),
+#         "speed": random.choice([-ENEMY_SPEED, ENEMY_SPEED]),
+#         "rotation": 0,
+#         "direction": random.choice([-1, 1]),
+#         "frame": enemy_frames[i % len(enemy_frames)],
+#         "projectile_timer": 0,
+#     })
+
+# # Enemy projectiles
+# projectiles = []
+
+# # Spawn an enemy projectile
+# # Spawn an enemy projectile
+# def spawn_projectile(enemy):
+#     projectile_x = enemy["x"] + ENEMY_SIZE // 2
+#     projectile_y = enemy["y"] + ENEMY_SIZE
+#     shape = random.choice(PROJECTILE_SHAPES)
+#     speed = random.uniform(1, 2)  # Randomized speed
+#     angle = random.uniform(-145, 145)  # Randomized trajectory
+    
+#     # Correct initialization of projectile direction
+#     dx = math.cos(math.radians(angle)) * speed
+#     dy = math.sin(math.radians(angle)) * speed
+    
+#     projectiles.append({
+#         "x": projectile_x,
+#         "y": projectile_y,
+#         "dx": dx,
+#         "dy": dy,
+#         "shape": shape,
+#     })
+
+
+# # Try loading the background and other layers
+# try:
+#     background = pygame.image.load("assets/background.png").convert()
+#     midground = pygame.image.load("assets/midground.png").convert_alpha()
+#     foreground = pygame.image.load("assets/foreground.png").convert_alpha()
+# except pygame.error as e:
+#     print(f"Error loading image: {e}")
+#     sys.exit()
+
+# # Initialize parallax positions
+# bg_x = 0
+# mg_x = 0
+# fg_x = 0
+
+# # Move enemies
+# def move_enemies():
+#     for enemy in enemies:
+#         enemy["x"] += enemy["speed"]
+#         enemy["rotation"] += ENEMY_ROTATION_SPEED * enemy["direction"]
+
+#         # Turn around at edges
+#         if enemy["x"] <= 0 or enemy["x"] >= SCREEN_WIDTH - ENEMY_SIZE:
+#             enemy["speed"] *= -1
+#             enemy["direction"] *= -1
+
+#         # Random projectile spawn
+#         enemy["projectile_timer"] += 1
+#         if enemy["projectile_timer"] >= random.randint(30, 90):  # Randomized spawn rate
+#             spawn_projectile(enemy)
+#             enemy["projectile_timer"] = 0
+
+# # Move projectiles
+# # Move projectiles
+# # Move projectiles (both player and enemy)
+# def move_projectiles():
+#     # Move enemy projectiles
+#     for projectile in projectiles[:]:
+#         projectile["x"] += projectile["dx"]
+#         projectile["y"] += projectile["dy"]
+
+#         # Remove off-screen projectiles
+#         if projectile["x"] < 0 or projectile["x"] > SCREEN_WIDTH or projectile["y"] > SCREEN_HEIGHT:
+#             projectiles.remove(projectile)
+
+# def move_player_projectiles(): # Move player projectiles
+#     for projectile in player_projectiles[:]:
+#         projectile["y"] += projectile["dy"]
+
+#         # Remove off-screen projectiles
+#         if projectile["y"] < 0:
+#             player_projectiles.remove(projectile)
+
+
+# # Player rotation properties
+# player_angle = 0  # Starting angle of the player
+
+# # Function to update player angle based on movement direction
+# def update_player_rotation(keys):
+#     global player_angle
+
+#     # Determine the direction based on keys pressed
+#     if keys[pygame.K_LEFT]:
+#         player_angle = 90  # Rotate left (facing left)
+#     elif keys[pygame.K_RIGHT]:
+#         player_angle = -90  # Rotate right (facing right)
+#     elif keys[pygame.K_UP]:
+#         player_angle = 0  # Facing up (no rotation needed)
+#     elif keys[pygame.K_DOWN]:
+#         player_angle = 180  # Facing down
+# # Smooth transition for rotation
+# # Function to spawn a new player projectile with rotation
+# def spawn_player_projectile(x, y, angle):
+#     radian_angle = math.radians(angle)  # Convert angle to radians
+#     dx = math.cos(radian_angle) * PROJECTILE_SPEED
+#     dy = -math.sin(radian_angle) * PROJECTILE_SPEED  # Negative y for upward movement
+
+#     player_projectiles.append({
+#         "x": x,
+#         "y": y,
+#         "dx": dx,
+#         "dy": dy,
+#         "shape": player_projectile_image
+#     })
+
+# # Smooth transition for rotation
+# def smooth_rotation(target_angle, current_angle, speed=5):
+#     difference = target_angle - current_angle
+#     if abs(difference) > speed:
+#         current_angle += speed if difference > 0 else -speed
+#     else:
+#         current_angle = target_angle
+#     return current_angle
+
+
+# # Main game loop
+# def main():
+#     global player_x, player_y, player_frame_index, frame_counter, player_angle
+
+#     current_angle = 0  # Initialize current angle
+#     running = True
+
+#     while running:
+#         # Handle events
+#         for event in pygame.event.get():
+#             if event.type == pygame.QUIT:
+#                 running = False
+#             if event.type == pygame.KEYDOWN:
+#                 if event.key == pygame.K_SPACE:  # Fire projectile
+#                     # Spawn projectile from the player's front based on rotation
+#                     front_x = player_x + math.cos(math.radians(player_angle)) * 40
+#                     front_y = player_y - math.sin(math.radians(player_angle)) * 40
+#                     spawn_player_projectile(front_x, front_y, player_angle)
+
+#         # Player movement
+#         keys = pygame.key.get_pressed()
+#         target_angle = current_angle  # Start with the current angle
+
+#         if keys[pygame.K_LEFT] and player_x > 0:
+#             player_x -= player_speed
+#             target_angle = 90  # Facing left
+#         if keys[pygame.K_RIGHT] and player_x < SCREEN_WIDTH - 80:
+#             player_x += player_speed
+#             target_angle = -90  # Facing right
+#         if keys[pygame.K_UP] and player_y > 0:
+#             player_y -= player_speed
+#             target_angle = 0  # Facing up
+#         if keys[pygame.K_DOWN] and player_y < SCREEN_HEIGHT - 80:
+#             player_y += player_speed
+#             target_angle = 180  # Facing down
+
+#         # Smoothly rotate to the target angle
+#         player_angle = smooth_rotation(target_angle, current_angle)
+#         current_angle = player_angle  # Update the current angle for continuity
+
+#         # Update player animation
+#         frame_counter += 1
+#         if frame_counter >= player_animation_speed:
+#             frame_counter = 0
+#             player_frame_index = (player_frame_index + 1) % len(player_frames)
+
+#         # Game logic
+#         move_enemies()
+#         move_projectiles()
+#         move_player_projectiles()
+
+#         # Drawing
+#         screen.fill(BLACK)
+
+#         # Draw background layers (parallax)
+#         screen.blit(background, (0, 0))
+#         screen.blit(midground, (mg_x, 0))
+#         screen.blit(foreground, (fg_x, SCREEN_HEIGHT - foreground.get_height()))
+
+#         # Draw enemies
+#         for enemy in enemies:
+#             rotated_enemy = pygame.transform.rotate(enemy["frame"], enemy["rotation"])
+#             screen.blit(rotated_enemy, (enemy["x"], enemy["y"]))
+
+#         # Rotate player sprite
+#         rotated_player = pygame.transform.rotate(player_frames[player_frame_index], player_angle)
+#         player_rect = rotated_player.get_rect(center=(player_x, player_y))
+#         screen.blit(rotated_player, player_rect.topleft)
+
+#         # Draw projectiles
+#         for projectile in projectiles:
+#             screen.blit(projectile["shape"], (projectile["x"], projectile["y"]))
+
+#         for projectile in player_projectiles:
+#             screen.blit(projectile["shape"], (projectile["x"], projectile["y"]))
+
+#         pygame.display.flip()
+#         clock.tick(60)
+
+#     pygame.quit()
+#     sys.exit()
+
+# if __name__ == "__main__":
+#     main()
+
+
+
+
+
+#     import pygame
+# import sys
+# import random
+# import math
+# from PIL import Image
+
+# pygame.init()
+
+# # Screen dimensions
+# SCREEN_WIDTH = 750
+# SCREEN_HEIGHT = 500
+
+# # Colors
+# BLACK = (0, 0, 0)
+
+# # Initialize screen
+# screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+# pygame.display.set_caption("Space Battle")
+
+# # Clock for managing the frame rate
+# clock = pygame.time.Clock()
+
+# # Load background layers
+# try:
+#     background = pygame.image.load("assets/background.png").convert()
+#     midground = pygame.image.load("assets/midground.png").convert_alpha()
+#     foreground = pygame.image.load("assets/foreground.png").convert_alpha()
+# except pygame.error as e:
+#     print(f"Error loading image: {e}")
+#     sys.exit()
+
+# # Parallax scrolling variables
+# bg_x = 0
+# mg_x = 0
+# fg_x = 0
+
+# # Player properties
+# player_img = pygame.image.load("assets/sc-1.gif").convert_alpha()
+# player_x = SCREEN_WIDTH // 2
+# player_y = SCREEN_HEIGHT - 100
+# player_speed = 5
+# player_angle = 0
+# player_projectiles = []  # List to hold player's projectiles
+
+# # Load player projectile image
+# player_projectile_img = pygame.image.load("assets/bullet1.png").convert_alpha()
+
+# PROJECTILE_SHAPES = [
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/small-a.png").convert_alpha(), (30, 30)),
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/big-a.png").convert_alpha(), (60, 60)),
+#     pygame.transform.scale(pygame.image.load(f"assets/Asteroids/med-a.png").convert_alpha(), (50, 50)),
+# ]
+
+# # Enemy properties
+# ENEMY_SIZE = 90
+# NUM_ENEMIES = 3
+# enemy_img = pygame.image.load("assets/enemy.gif").convert_alpha()
+# enemy_img = pygame.transform.scale(enemy_img, (ENEMY_SIZE, ENEMY_SIZE))
+
+# enemies = [
+#     {
+#         "x": random.randint(0, SCREEN_WIDTH - ENEMY_SIZE),
+#         "y": random.randint(0, SCREEN_HEIGHT // 5),
+#         "speed": random.choice([-1, 1]),
+#         "rotation": 0,
+#     }
+#     for _ in range(NUM_ENEMIES)
+# ]
+
+# # Enemy projectiles
+# enemy_projectiles = []
+# PROJECTILE_SPEED = 2
+
+# # Smooth rotation function
+# def smooth_rotation(target_angle, current_angle, speed=5):
+#     difference = target_angle - current_angle
+#     if abs(difference) > speed:
+#         current_angle += speed if difference > 0 else -speed
+#     else:
+#         current_angle = target_angle
+#     return current_angle
+
+
+# def spawn_projectile(enemy):
+#     projectile_x = enemy["x"] + ENEMY_SIZE // 2
+#     projectile_y = enemy["y"] + ENEMY_SIZE
+#     shape = random.choice(PROJECTILE_SHAPES)
+#     speed = random.uniform(1, 2)  # Randomized speed
+#     angle = random.uniform(-145, 145)  # Randomized trajectory
+    
+#     # Correct initialization of projectile direction
+#     dx = math.cos(math.radians(angle)) * speed
+#     dy = math.sin(math.radians(angle)) * speed
+    
+#     projectiles.append({
+#         "x": projectile_x,
+#         "y": projectile_y,
+#         "dx": dx,
+#         "dy": dy,
+#         "shape": shape,
+#     })
+
+    
+# def move_projectiles():
+#     # Move enemy projectiles
+#     for projectile in projectiles[:]:
+#         projectile["x"] += projectile["dx"]
+#         projectile["y"] += projectile["dy"]
+
+#         # Remove off-screen projectiles
+#         if projectile["x"] < 0 or projectile["x"] > SCREEN_WIDTH or projectile["y"] > SCREEN_HEIGHT:
+#             projectiles.remove(projectile)
+
+
+# # Spawn player projectile
+# def spawn_player_projectile(player_x, player_y, player_angle, player_width, player_height):
+#     # Offset for spawning at the front of the player
+#     front_offset = max(player_width, player_height) // 2 + 10
+
+#     # Calculate the center of the player
+#     player_center_x = player_x
+#     player_center_y = player_y
+
+#     # Calculate projectile spawn position
+#     projectile_x = player_center_x + math.cos(math.radians(player_angle)) * front_offset
+#     projectile_y = player_center_y - math.sin(math.radians(player_angle)) * front_offset
+
+#     # Calculate velocity for the projectile
+#     dx = math.cos(math.radians(player_angle)) * PROJECTILE_SPEED
+#     dy = -math.sin(math.radians(player_angle)) * PROJECTILE_SPEED
+
+#     # Add the projectile to the list
+#     player_projectiles.append({
+#         "x": projectile_x,
+#         "y": projectile_y,
+#         "dx": dx,
+#         "dy": dy,
+#         "shape": player_projectile_img
+#     })
+
+
+
+# # Move projectiles
+# def move_projectiles():
+#     for projectile in player_projectiles[:]:
+#         projectile["x"] += projectile["dx"]
+#         projectile["y"] += projectile["dy"]
+#         if (
+#             projectile["x"] < 0
+#             or projectile["x"] > SCREEN_WIDTH
+#             or projectile["y"] < 0
+#             or projectile["y"] > SCREEN_HEIGHT
+#         ):
+#             player_projectiles.remove(projectile)
+
+
+# # Move enemies
+# def move_enemies():
+#     for enemy in enemies:
+#         enemy["x"] += enemy["speed"]
+#         if enemy["x"] <= 0 or enemy["x"] >= SCREEN_WIDTH - ENEMY_SIZE:
+#             enemy["speed"] *= -1
+
+
+# # Draw all game elements
+# def draw_elements():
+#     # Background layers
+#     screen.blit(background, (0, 0))
+#     screen.blit(midground, (mg_x, 0))
+#     screen.blit(foreground, (fg_x, SCREEN_HEIGHT - foreground.get_height()))
+
+#     # Player
+#     rotated_player = pygame.transform.rotate(player_img, player_angle)
+#     player_rect = rotated_player.get_rect(center=(player_x, player_y))
+#     screen.blit(rotated_player, player_rect.topleft)
+
+
+#     # Player projectiles
+#     for projectile in player_projectiles:
+#         screen.blit(player_projectile_img, (projectile["x"], projectile["y"]))
+
+#     # Enemies
+#     for enemy in enemies:
+#         screen.blit(enemy_img, (enemy["x"], enemy["y"]))
+
+
+# # Main game loop
+# def main():
+#     global player_x, player_y, player_angle
+#     running = True
+#     current_angle = 0
+
+#     while running:
+#         # Handle events
+#         for event in pygame.event.get():
+#             if event.type == pygame.QUIT:
+#                 running = False
+#             if event.type == pygame.KEYDOWN:
+#                 if event.key == pygame.K_SPACE:  # Fire projectile
+#                     player_width, player_height = player_img.get_rect().size
+#                     spawn_player_projectile(player_x, player_y, player_angle, player_width, player_height)
+
+#         # Player movement
+#         keys = pygame.key.get_pressed()
+#         target_angle = current_angle  # Default to current angle
+#         if keys[pygame.K_LEFT] and player_x > 0:
+#             player_x -= player_speed
+#             target_angle = 90
+#         if keys[pygame.K_RIGHT] and player_x < SCREEN_WIDTH:
+#             player_x += player_speed
+#             target_angle = -90
+#         if keys[pygame.K_UP] and player_y > 0:
+#             player_y -= player_speed
+#             target_angle = 0
+#         if keys[pygame.K_DOWN] and player_y < SCREEN_HEIGHT:
+#             player_y += player_speed
+#             target_angle = 180
+
+#         # Smooth rotation
+#         player_angle = smooth_rotation(target_angle, current_angle)
+#         current_angle = player_angle
+
+#         # Game logic
+#         move_enemies()
+#         move_projectiles()
+
+#         # Drawing
+#         screen.fill(BLACK)
+#         draw_elements()
+#         pygame.display.flip()
+#         clock.tick(60)
+
+#     pygame.quit()
+#     sys.exit()
+
+# if __name__ == "__main__":
+#     main()

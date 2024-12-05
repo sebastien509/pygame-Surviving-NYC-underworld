@@ -1,0 +1,184 @@
+def show_menu():
+    menu_running = True
+    while menu_running:
+        # screen.fill(BLACK)
+        screen.pygame.display(home-page.png)
+        font = pygame.font.Font(None, 74)
+        title_text = font.render("Space Battle", True, (255, 255, 255))
+        screen.blit(title_text, (SCREEN_WIDTH // 2 - title_text.get_width() // 2, 100))
+
+        # Button
+        button_font = pygame.font.Font(None, 50)
+        start_text = button_font.render("Start", True, (0, 0, 0))
+        button_rect = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50, 200, 100)
+        pygame.draw.rect(screen, (255, 255, 255), button_rect)
+        screen.blit(start_text, (button_rect.x + 50, button_rect.y + 25))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN and button_rect.collidepoint(event.pos):
+                menu_running = False
+
+        pygame.display.flip()
+        clock.tick(60)
+
+
+
+
+def show_victory_popup():
+    popup_running = True
+    while popup_running:
+        screen.fill(BLACK)
+        try:
+            popup_img = pygame.image.load("assets/win.png").convert_alpha()
+            screen.blit(popup_img, (SCREEN_WIDTH // 2 - popup_img.get_width() // 2, 100))
+        except pygame.error:
+            print("Could not load victory image.")
+
+        # Restart button
+        restart_button = pygame.Rect(SCREEN_WIDTH // 2 - 150, 300, 140, 60)
+        pygame.draw.rect(screen, (0, 255, 0), restart_button)
+        restart_text = pygame.font.Font(None, 36).render("Restart", True, BLACK)
+        screen.blit(restart_text, (restart_button.x + 20, restart_button.y + 15))
+
+        # Exit button
+        exit_button = pygame.Rect(SCREEN_WIDTH // 2 + 10, 300, 140, 60)
+        pygame.draw.rect(screen, (255, 0, 0), exit_button)
+        exit_text = pygame.font.Font(None, 36).render("Exit", True, BLACK)
+        screen.blit(exit_text, (exit_button.x + 30, exit_button.y + 15))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if restart_button.collidepoint(event.pos):
+                    popup_running = False
+                    main()  # Restart the game
+                elif exit_button.collidepoint(event.pos):
+                    pygame.quit()
+                    sys.exit()
+
+        pygame.display.flip()
+        clock.tick(60)
+
+
+
+
+
+def show_defeat_popup():
+    popup_running = True
+    while popup_running:
+        screen.fill(BLACK)
+        try:
+            popup_img = pygame.image.load("assets/lost.png").convert_alpha()
+            screen.blit(popup_img, (SCREEN_WIDTH // 2 - popup_img.get_width() // 2, 100))
+        except pygame.error:
+            print("Could not load defeat image.")
+
+        # Try Again button
+        try_again_button = pygame.Rect(SCREEN_WIDTH // 2 - 150, 300, 140, 60)
+        pygame.draw.rect(screen, (0, 0, 255), try_again_button)
+        try_again_text = pygame.font.Font(None, 36).render("Try Again", True, BLACK)
+        screen.blit(try_again_text, (try_again_button.x + 5, try_again_button.y + 15))
+
+        # Exit button
+        exit_button = pygame.Rect(SCREEN_WIDTH // 2 + 10, 300, 140, 60)
+        pygame.draw.rect(screen, (255, 0, 0), exit_button)
+        exit_text = pygame.font.Font(None, 36).render("Exit", True, BLACK)
+        screen.blit(exit_text, (exit_button.x + 30, exit_button.y + 15))
+
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if try_again_button.collidepoint(event.pos):
+                    popup_running = False
+                    main()  # Restart the game
+                elif exit_button.collidepoint(event.pos):
+                    pygame.quit()
+                    sys.exit()
+
+        pygame.display.flip()
+        clock.tick(60)
+
+
+
+
+def main():
+    global player_x, player_y, player_angle
+
+    show_menu()  # Show menu before the game starts
+
+    current_angle = 0
+    running = True
+
+    while running:
+        # Main game logic...
+        # (Use game events to determine win/loss, e.g., collision, score, etc.)
+
+        # Example condition to end the game
+        if player_won_condition:
+            show_victory_popup()
+            running = False
+        elif player_lost_condition:
+            show_defeat_popup()
+            running = False
+
+
+
+
+
+# you_won.png: A PNG graphic with the "You Won" message.
+
+# you_lost.png: A PNG graphic with the "You Lost" message.
+
+# Place these images in the assets/ directory.
+
+
+# Logic for Winning/Losing:
+
+# Define conditions like player_won_condition and player_lost_condition based on your game mechanics (e.g., score thresholds, collision detection, etc.).
+
+
+Below are the modifications needed:
+
+Add the Enemy Count Tracker:
+python
+Copy code
+# Track destroyed enemies
+destroyed_enemies = 0
+Update Collision Detection Logic:
+Add this inside your game loop to check for collisions between projectiles and enemies:
+
+python
+Copy code
+# Check for collisions between player projectiles and enemies
+for projectile in player_projectiles[:]:
+    for enemy in enemies[:]:
+        enemy_rect = pygame.Rect(enemy["x"], enemy["y"], ENEMY_SIZE, ENEMY_SIZE)
+        projectile_rect = pygame.Rect(projectile["x"], projectile["y"], 30, 30)  # Adjust size as needed
+
+        if projectile_rect.colliderect(enemy_rect):
+            # Remove the projectile and the enemy
+            player_projectiles.remove(projectile)
+            enemies.remove(enemy)
+
+            # Increment the destroyed enemy counter
+            destroyed_enemies += 1
+
+            # Spawn 5 new enemies if the first 3 are destroyed
+            if destroyed_enemies == 3:
+                for _ in range(5):
+                    enemies.append({
+                        "x": random.randint(0, SCREEN_WIDTH - ENEMY_SIZE),
+                        "y": random.randint(0, SCREEN_HEIGHT // 5),
+                        "speed": random.choice([-ENEMY_SPEED, ENEMY_SPEED]),
+                        "rotation": 0,
+                        "direction": random.choice([-1, 1]),
+                        "frame": random.choice(enemy_frames),  # Randomize enemy frames
+                        "projectile_timer": 0,
+                    })
